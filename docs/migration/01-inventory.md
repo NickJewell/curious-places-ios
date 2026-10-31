@@ -22,8 +22,8 @@ Three caveats apply to everything below:
 - **Architecture.** The app reads and writes Supabase directly with the anon key for auth, profiles, places, lists, check-ins and badges. It also calls an Express server on Replit for the map viewport, tours, audio, facts, votes and issue reports. The server uses the **service-role key** and has **no authentication**.
 - **Content model.** The core content is the `places` table. Each place is identified by `curio_id` (`CURIO-<n>`) and has English text plus 10 translated `{lang}_detail_overview` columns. Every cross-table link is a text `curio_id` with **no foreign key**.
 - **External services.** The only third-party API is **InWorld TTS** (`inworld-tts-1.5-max`), chosen over ElevenLabs on cost. It runs on the server and generates narration on demand, which is cached in private Supabase Storage buckets. **ElevenLabs, OpenAI and translation APIs are not used.** Nothing in the repo shows how the translated text columns get filled.
-- **Box IDs.** These index an 83 × 68 grid over Greater London. They are **computed on the fly by one admin web tool** and are not stored. The mobile app never uses them.
-- **Background jobs.** There are no Edge Functions, cron jobs, views or triggers. There is one RPC, `get_user_progress`.
+- **Box IDs.** These index an 83 × 68 grid over Greater London. The admin web tool computes them on the fly. *Correction from the pulled live schema:* they are also stored, in `places.box_id`, written by an external loader. The mobile app never uses them. H3 cells replace them for new work (`supabase/proposed/08_h3_cells.sql`).
+- **Background jobs.** There are no Edge Functions, cron jobs or views. There is one RPC, `get_user_progress`. *Correction from the pulled live schema:* `places` has one trigger, `set_updated_at`.
 - **Unfinished features.** Tour stop-to-stop progression was never built: "Start Tour" opens stop 1 only. The badge-unlocked modal and the confetti can never fire.
 - **Security.** Every `/api/admin/*` endpoint is public. Users can grant themselves badges. The progress RPC can read any user's data. See §10.
 - **Most serious bug.** New place IDs collide once there are 1,000 or more places. After that, every place created from the in-app admin screen gets the same ID. See §10, item 1.
@@ -151,8 +151,8 @@ The core content table. The anon client reads it directly (`client/lib/supabase.
 
 | Column | Type (inferred) | Notes / evidence |
 |---|---|---|
-| `places_id` | PK, uuid or int | Admin update key (`server/routes.ts:163-188`) |
-| `curio_id` | text, unique in practice | `CURIO-<n>`. The lookup key everywhere (`supabase.ts:116`, `routes.ts:210,1002,1180`). Uniqueness is enforced only in app code (`routes.ts:889-902`). |
+| `places_id` | uuid, no constraint | Admin update key (`server/routes.ts:163-188`). *Correction from the pulled live schema:* not the primary key. |
+| `curio_id` | text, **primary key** (live schema) | `CURIO-<n>`. The lookup key everywhere (`supabase.ts:116`, `routes.ts:210,1002,1180`). Uniqueness is enforced only in app code (`routes.ts:889-902`). |
 | `name` | text | Searched with `ilike` (`supabase.ts:152`, `routes.ts:1321`) |
 | `lat`, `lon` | double | Bounding-box filters (`supabase.ts:249-252`, `routes.ts:1441-1442`) |
 | `plus_code` | text, nullable | Open Location Code, computed in the browser (`server/templates/admin-map.html:524-552`) |
@@ -162,6 +162,9 @@ The core content table. The anon client reads it directly (`client/lib/supabase.
 | `attributes` | jsonb, nullable | Structured tags, shape below. Used for map filters and the admin graph. |
 | `curio_type` | text? | Read only, for marker styling (`supabase.ts:171`, `MapScreen.tsx:74-104`). Not selected by `/api/map/viewport`. |
 | `detail_audio_path` | text? | Read only, to show the "Audio" badge (`MapScreen.tsx:1010`). The actual audio comes from Storage (§3.4). |
+| `location` | geography(Point, 4326) | From the pulled live schema: generated from `lon`/`lat`, with GIST indexes. PostGIS is enabled. No app reads it. |
+| `box_id` | integer, nullable | From the pulled live schema: the London box ID (§9), written by an external loader. No app reads it. |
+| `h3_hex_r7_id`, `h3_hex_r9_id` | text | Proposed in `supabase/proposed/08_h3_cells.sql`: H3 cells, filled by the `h3-index` Edge Function. |
 
 `attributes` shape (`routes.ts:1585-1624`, `supabase.ts:50-64`):
 ```
@@ -397,7 +400,8 @@ erDiagram
 | `places_id` | `places` | A separate PK, used only by `PATCH /api/admin/places/:id` |
 | `tour_id` | `lists` | A free-text tour code, separate from `lists.id` |
 | `plus_code` | `places` | An Open Location Code, encoded in the browser |
-| box ID | computed, not stored | See §9 |
+| box ID | `places.box_id`, also computed by the admin tool | See §9 |
+| H3 cells | `places.h3_hex_r7_id`, `h3_hex_r9_id` (proposed) | See `supabase/proposed/08_h3_cells.sql` |
 
 ---
 
@@ -769,7 +773,7 @@ west  = LON_MIN + col × LON_STEP     east  = min(west + LON_STEP, LON_MAX)
 - Places outside the bounding box get `null` and are **left out of `boxes` without notice**, but they still count in `totalPlaces` (`:1395, 1412`).
 - Places with null coordinates are skipped (`:1392`).
 
-**Storage.** Box ID is **not stored**. There's no column, migration or index for it. It's recomputed over the full `places` table on every request.
+**Storage.** The admin tool recomputes box IDs over the full `places` table on every request. *Correction from the pulled live schema:* there is also a stored `places.box_id integer` (no index), commented "used for iterative processing during load". It's written by a loader outside both repos, so whether its values follow this formula is unchecked.
 
 **Where it's used**
 
@@ -781,6 +785,8 @@ west  = LON_MIN + col × LON_STEP     east  = min(west + LON_STEP, LON_MAX)
 | `server/routes.ts:125` | A comment only ("sorted by box_id"). The code sorts by curio number. |
 
 **Not used in:** `client/` (the mobile app), the migrations, `shared/`, or any other admin tool.
+
+**Replaced by H3 for new work.** The grid stops at Greater London, so places get H3 cells instead (`supabase/proposed/08_h3_cells.sql`). `box_id` stays until the loader has moved over.
 
 **For the port:** the mobile app has no box-ID dependency. If it's ever wanted on iOS (for example for offline tiles or region downloads), port the two functions as they are, keeping 83 columns, inclusive lower bounds and the 1-based IDs, so that IDs match the admin tool.
 

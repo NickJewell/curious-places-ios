@@ -37,6 +37,18 @@ Full analysis of the Expo app is in `docs/migration/01-inventory.md`. Read §1 "
      - **Not done yet:** a real walk on a device, and the 6b items (tour legs, trimming the walked part of the line).
   7. Admin (undecided)
 
+**Geo index (H3)**, a database track separate from the milestones. Code is in `supabase/proposed/08_h3_cells.sql` (not yet applied) and `supabase/functions/h3-index/`. The app doesn't use it yet.
+- **Columns:** `places.h3_hex_r9_id` and `h3_hex_r7_id`, as H3 hex strings. They're text, because a bigint loses precision in JS. r7 is the *parent* of r9 (`cellToParent`), so every r9 rolls up into one r7.
+- **Supabase has no `h3` extension**, so the `h3-index` Edge Function computes cells with h3-js. It also fills `h3_cells` (neighbours, r7 parent and outline) for every cell within 2 rings of a place. The SQL functions read that table: `h3_cell_at`, `h3_neighbours`, `h3_grid_disk` (k ≤ 2) and `places_near`. They return nothing far from every place; a loader working in new territory should use an H3 library directly.
+- **Sync:** inserting a place or changing its `lat`/`lon` clears its cells and asks `h3-index` to refill them (through pg_net, once per statement and at most every 30 s). A pg_cron sweep every 5 minutes catches the rest. `set_updated_at` skips the function's own writes.
+- **`box_id` (London-only grid) is kept** until the external loader moves to H3; then drop it.
+- **Setup:**
+  1. Apply `08`.
+  2. In the SQL editor, run `vault.create_secret` for `project_url` and `h3_index_secret`. The exact lines are in the file header; keep the values out of the repo.
+  3. `supabase secrets set H3_INDEX_SECRET=…` with the same secret, then `supabase functions deploy h3-index --no-verify-jwt`. The secret header replaces JWT checks: the publishable key isn't a JWT.
+  4. Backfill: POST to the function with `x-h3-index-secret` until it returns `"remaining": 0`.
+- **Tested locally** on 2026-10-31 against the pulled schema with about 2,000 places, on Postgres 17.11.0.006 (the CLI's default; live is 17.6.1.054). Stored cells, `h3_cell_at`, `h3_grid_disk` and `places_near` all match h3-js, and inserts still succeed with the secrets missing or the URL dead.
+
 **Auth.** Code is in `Services/SessionStore.swift` and `Features/Auth/`.
 - **Google:** OAuth in a web sheet, returning to `curiousplaces://auth/callback`.
 - **Apple:** native, using a nonce.
