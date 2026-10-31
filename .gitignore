@@ -1,0 +1,14 @@
+# Secrets
+Secrets.xcconfig
+
+# Xcode
+xcuserdata/
+DerivedData/
+build/
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+
+# macOS
+.DS_Store

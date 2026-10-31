@@ -6,6 +6,11 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		01E82B643095D05000D01935 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 01E82B633095D05000D01935 /* Supabase */; };
+		01E82B663095D09700D01935 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 01E82B653095D09700D01935 /* Secrets.xcconfig */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		01E82B473095CEF800D01935 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,8 @@
 		01E82B373095CEF600D01935 /* Curious Places.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Curious Places.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		01E82B463095CEF800D01935 /* Curious PlacesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Curious PlacesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		01E82B503095CEF800D01935 /* Curious PlacesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Curious PlacesUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		01E82B613095CF9400D01935 /* Curious-Places-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Curious-Places-Info.plist"; sourceTree = "<group>"; };
+		01E82B653095D09700D01935 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -51,6 +58,7 @@
 		01E82B343095CEF600D01935 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				01E82B643095D05000D01935 /* Supabase in Frameworks */,
 			);
 		};
 		01E82B433095CEF800D01935 /* Frameworks */ = {
@@ -69,6 +77,8 @@
 		01E82B2E3095CEF600D01935 = {
 			isa = PBXGroup;
 			children = (
+				01E82B653095D09700D01935 /* Secrets.xcconfig */,
+				01E82B613095CF9400D01935 /* Curious-Places-Info.plist */,
 				01E82B393095CEF600D01935 /* Curious Places */,
 				01E82B493095CEF800D01935 /* Curious PlacesTests */,
 				01E82B533095CEF800D01935 /* Curious PlacesUITests */,
@@ -103,6 +113,9 @@
 				01E82B393095CEF600D01935 /* Curious Places */,
 			);
 			name = "Curious Places";
+			packageProductDependencies = (
+				01E82B633095D05000D01935 /* Supabase */,
+			);
 			productName = "Curious Places";
 			productReference = 01E82B373095CEF600D01935 /* Curious Places.app */;
 			productType = "com.apple.product-type.application";
@@ -181,6 +194,9 @@
 			);
 			mainGroup = 01E82B2E3095CEF600D01935;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				01E82B623095D05000D01935 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 01E82B383095CEF600D01935 /* Products */;
 			projectDirPath = "";
@@ -197,6 +213,7 @@
 		01E82B353095CEF600D01935 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				01E82B663095D09700D01935 /* Secrets.xcconfig in Resources */,
 			);
 		};
 		01E82B443095CEF800D01935 /* Resources */ = {
@@ -366,6 +383,7 @@
 		};
 		01E82B593095CEF800D01935 /* Debug configuration for PBXNativeTarget "Curious Places" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 01E82B653095D09700D01935 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -374,11 +392,16 @@
 				DEVELOPMENT_TEAM = Q7Q64466N4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Curious-Places-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Lets the app play narration when you reach a stop, even with your phone locked.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Curious Places uses your location to show curiosities near you and how far away they are.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -387,17 +410,22 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "jewell.Curious-Places";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
 		01E82B5A3095CEF800D01935 /* Release configuration for PBXNativeTarget "Curious Places" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 01E82B653095D09700D01935 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -406,11 +434,16 @@
 				DEVELOPMENT_TEAM = Q7Q64466N4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Curious-Places-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Lets the app play narration when you reach a stop, even with your phone locked.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Curious Places uses your location to show curiosities near you and how far away they are.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -419,12 +452,16 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "jewell.Curious-Places";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -548,6 +585,27 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		01E82B623095D05000D01935 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+			traits = (
+			);
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		01E82B633095D05000D01935 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 01E82B623095D05000D01935 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 01E82B2F3095CEF600D01935 /* Project object */;
 	validationLevel = 1;
