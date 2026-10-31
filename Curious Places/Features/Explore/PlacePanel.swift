@@ -11,8 +11,10 @@ struct PlacePanel: View {
     let place: Place
     let distance: CLLocationDistance?
     let isVisited: Bool
+    let isSaved: Bool
     let onRead: () -> Void
     let onHunt: () -> Void
+    let onSave: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -41,6 +43,7 @@ struct PlacePanel: View {
 
             Text(place.name)
                 .font(.title3.weight(.semibold))
+                .fontDesign(.serif)
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(2)
 
@@ -61,7 +64,10 @@ struct PlacePanel: View {
             }
             .buttonStyle(.plain)
 
-            HuntButton(action: onHunt)
+            HStack(spacing: 8) {
+                HuntButton(action: onHunt)
+                SaveButton(isSaved: isSaved, action: onSave)
+            }
         }
         .padding(16)
         .background(.regularMaterial, in: .rect(cornerRadius: 24))
@@ -100,6 +106,24 @@ struct HuntButton: View {
         .controlSize(.large)
         .tint(Theme.gold)
         .foregroundStyle(Theme.backgroundRoot)
+    }
+}
+
+/// Opens "Save to List" (the Expo map panel's "Save").
+struct SaveButton: View {
+    let isSaved: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(isSaved ? "Saved" : "Save", systemImage: isSaved ? "bookmark.fill" : "bookmark")
+                .font(.subheadline.weight(.semibold))
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .tint(Theme.gold)
     }
 }
 

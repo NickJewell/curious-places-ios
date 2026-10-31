@@ -78,6 +78,40 @@ struct PlaceService {
         return rows.first?.place(in: language)
     }
 
+    /// Visible places with these ids, in no particular order. Hidden or missing ids are left out.
+    func places(ids: [String], language: AppLanguage) async throws -> [Place] {
+        guard !ids.isEmpty else { return [] }
+        let rows: [PlaceRow] = try await client
+            .from("places")
+            .select(Self.columns(for: language))
+            .in("curio_id", values: ids)
+            .eq("visible_flag", value: true)
+            .execute()
+            .value
+        return rows.compactMap { $0.place(in: language) }
+    }
+
+    /// Which of these ids are visible places.
+    func visibleIDs(_ ids: [String]) async throws -> Set<String> {
+        guard !ids.isEmpty else { return [] }
+        let rows: [CurioIDRow] = try await client
+            .from("places")
+            .select("curio_id")
+            .in("curio_id", values: ids)
+            .eq("visible_flag", value: true)
+            .execute()
+            .value
+        return Set(rows.map(\.curioID))
+    }
+
+    private nonisolated struct CurioIDRow: Decodable, Sendable {
+        let curioID: String
+
+        enum CodingKeys: String, CodingKey {
+            case curioID = "curio_id"
+        }
+    }
+
     /// Only columns the live Expo server already selects, so the query can't fail
     /// on a column that exists only in the inventory's INFERRED list.
     static func columns(for language: AppLanguage) -> String {

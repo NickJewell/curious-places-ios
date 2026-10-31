@@ -391,6 +391,113 @@ struct HuntProgressTests {
     }
 }
 
+struct RouteGeometryTests {
+    /// An L-shaped route near St Paul's: 200 m east, then 100 m north.
+    private let corner = MKMapPoint(CLLocationCoordinate2D(latitude: 51.5138, longitude: -0.0984))
+    private var path: [MKMapPoint] {
+        let perMetre = 1 / MKMetersPerMapPointAtLatitude(51.5138)
+        let east = MKMapPoint(x: corner.x - 200 * perMetre, y: corner.y)
+        let north = MKMapPoint(x: corner.x, y: corner.y - 100 * perMetre)
+        return [east, corner, north]
+    }
+    private func offset(_ point: MKMapPoint, east: Double = 0, north: Double = 0) -> MKMapPoint {
+        let perMetre = 1 / MKMetersPerMapPointAtLatitude(51.5138)
+        return MKMapPoint(x: point.x + east * perMetre, y: point.y - north * perMetre)
+    }
+
+    @Test func onTheRouteAtTheStartTheWholeRouteRemains() throws {
+        let progress = try #require(RouteGeometry.progress(of: path[0], along: path))
+        #expect(progress.offRouteDistance < 0.5)
+        #expect(abs(progress.remainingDistance - 300) < 1)
+    }
+
+    @Test func besideTheRouteCountsTheSideStepAndTheRestOfTheRoute() throws {
+        // 20 m south of the first leg, halfway along it.
+        let point = offset(path[0], east: 100, north: -20)
+        let progress = try #require(RouteGeometry.progress(of: point, along: path))
+        #expect(abs(progress.offRouteDistance - 20) < 0.5)
+        #expect(abs(progress.remainingDistance - 200) < 1)
+    }
+
+    @Test func onTheSecondLegOnlyItsRestRemains() throws {
+        let point = offset(corner, north: 60)
+        let progress = try #require(RouteGeometry.progress(of: point, along: path))
+        #expect(progress.offRouteDistance < 0.5)
+        #expect(abs(progress.remainingDistance - 40) < 1)
+    }
+
+    @Test func pastTheEndNothingRemains() throws {
+        let point = offset(path[2], north: 25)
+        let progress = try #require(RouteGeometry.progress(of: point, along: path))
+        #expect(abs(progress.offRouteDistance - 25) < 0.5)
+        #expect(progress.remainingDistance < 0.5)
+    }
+
+    @Test func emptyAndSinglePointPaths() throws {
+        #expect(RouteGeometry.progress(of: corner, along: []) == nil)
+        let single = try #require(RouteGeometry.progress(of: offset(corner, east: 10), along: [corner]))
+        #expect(abs(single.offRouteDistance - 10) < 0.5)
+        #expect(single.remainingDistance == 0)
+    }
+
+    @Test func remainingTimeUsesTheRoutesOwnPace() {
+        #expect(RouteGeometry.remainingTime(400, routeDistance: 800, routeTime: 600) == 300)
+        #expect(RouteGeometry.remainingTime(400, routeDistance: 0, routeTime: 600) == nil)
+    }
+
+    @Test func walkingTimeRoundsUpToWholeMinutes() {
+        #expect(RouteGeometry.walkingMinutes(1021) == 18)
+        #expect(RouteGeometry.formattedWalkingTime(5) == "1 min")
+        #expect(RouteGeometry.formattedWalkingTime(61) == "2 min")
+        #expect(RouteGeometry.formattedWalkingTime(720) == "12 min")
+        #expect(RouteGeometry.formattedWalkingTime(3600) == "1 h")
+        #expect(RouteGeometry.formattedWalkingTime(3900) == "1 h 5 min")
+    }
+}
+
+struct RoutePolicyTests {
+    private let start = Date(timeIntervalSinceReferenceDate: 0)
+
+    @Test func firstRouteNeedsOnlyARoughFixAndATargetFurtherThan75Metres() {
+        let policy = RoutePolicy()
+        #expect(policy.shouldRequest(distanceToTarget: 500, accuracy: 65, offRoute: nil, now: start))
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 150, offRoute: nil, now: start))
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: -1, offRoute: nil, now: start))
+        #expect(!policy.shouldRequest(distanceToTarget: 60, accuracy: 10, offRoute: nil, now: start))
+    }
+
+    @Test func reroutesOnlyWhenMoreThan30MetresOffOnAnAccurateFix() {
+        let policy = RoutePolicy()
+        let later = start.addingTimeInterval(60)
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: 25, now: later))
+        #expect(policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: 35, now: later))
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 40, offRoute: 35, now: later))
+    }
+
+    @Test func requestsAreAtLeast20SecondsApart() {
+        var policy = RoutePolicy()
+        policy.didRequest(at: start)
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: 50, now: start.addingTimeInterval(19)))
+        #expect(policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: 50, now: start.addingTimeInterval(21)))
+    }
+
+    @Test func aFailureBacksOffForAMinute() {
+        var policy = RoutePolicy()
+        policy.didRequest(at: start)
+        policy.didFail(at: start)
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: nil, now: start.addingTimeInterval(59)))
+        #expect(policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: nil, now: start.addingTimeInterval(61)))
+    }
+
+    @Test func stopsAfter15RequestsPerStop() {
+        var policy = RoutePolicy()
+        for minute in 0..<15 {
+            policy.didRequest(at: start.addingTimeInterval(Double(minute) * 60))
+        }
+        #expect(!policy.shouldRequest(distanceToTarget: 500, accuracy: 10, offRoute: 100, now: start.addingTimeInterval(3600)))
+    }
+}
+
 struct CheckinModelTests {
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
@@ -456,5 +563,132 @@ struct CheckinModelTests {
         #expect(CheckinCelebration.milestone(1) == "Your very first curio discovered!")
         #expect(CheckinCelebration.milestone(30) == "30 total discoveries — remarkable.")
         #expect(CheckinCelebration.milestone(7) == "7 places visited so far.")
+    }
+}
+
+struct ListModelTests {
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    private func place(_ id: String) -> Place {
+        Place(id: id, name: id, latitude: 51.5, longitude: -0.1,
+              overview: nil, translatedOverview: nil, language: .english, attributes: nil)
+    }
+
+    private func row(_ placeID: String, order: Int?, created: TimeInterval = 0) -> ListItemRow {
+        ListItemRow(id: UUID(), listID: UUID(), placeID: placeID, orderIndex: order,
+                    createdAt: Date(timeIntervalSince1970: created))
+    }
+
+    @Test func decodesLiveListItemRow() throws {
+        let json = """
+        {"list_item_uuid":"6F9619FF-8B86-D011-B42D-00C04FC964FF","list_uuid":"11111111-0000-0000-0000-000000000001",
+         "place_id":"CURIO-7","order_index":3,"created_at":"2026-10-31T12:00:00Z"}
+        """
+        let row = try decoder.decode(ListItemRow.self, from: Data(json.utf8))
+        #expect(row.placeID == "CURIO-7")
+        #expect(row.orderIndex == 3)
+        #expect(row.listID?.uuidString == "11111111-0000-0000-0000-000000000001")
+    }
+
+    @Test func itemWriteSetsBothListKeysWithLowercaseText() throws {
+        let list = try #require(UUID(uuidString: "ABCDEF00-0000-0000-0000-000000000001"))
+        let data = try JSONEncoder().encode(ListItemWrite(listID: list, placeID: "CURIO-7", orderIndex: 2))
+        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        // The insert policy in proposed/07 requires list_id = list_uuid::text, which Postgres writes in lowercase.
+        #expect(body["list_id"] as? String == "abcdef00-0000-0000-0000-000000000001")
+        #expect(body["list_uuid"] as? String == list.uuidString)
+        #expect(body["order_index"] as? Int == 2)
+    }
+
+    @Test func itemsOrderByIndexThenAgeWithUnindexedLast() {
+        let rows = [row("C", order: nil), row("B", order: 2), row("A", order: 1, created: 5), row("A2", order: 1, created: 1)]
+        #expect(ListItemRow.ordered(rows).map(\.placeID) == ["A2", "A", "B", "C"])
+    }
+
+    @Test func entriesDropHiddenPlacesAndKeepOrder() {
+        let rows = [row("CURIO-2", order: 2), row("CURIO-9", order: 1), row("CURIO-1", order: 3)]
+        let entries = ListEntry.entries(rows: rows, places: [place("CURIO-1"), place("CURIO-2")])
+        #expect(entries.map(\.place.id) == ["CURIO-2", "CURIO-1"])
+    }
+
+    @Test func toursGroupByRegionWithOtherLast() throws {
+        let json = """
+        [{"id":"11111111-0000-0000-0000-000000000001","name":"A","tour_start_region":"Hackney"},
+         {"id":"11111111-0000-0000-0000-000000000002","name":"B","tour_start_region":null},
+         {"id":"11111111-0000-0000-0000-000000000003","name":"C","tour_start_region":"City of London","promoted_flag":true},
+         {"id":"11111111-0000-0000-0000-000000000004","name":"D","tour_start_region":"Hackney"}]
+        """
+        let tours = try decoder.decode([Tour].self, from: Data(json.utf8))
+        let groups = Tour.grouped(tours)
+        #expect(groups.map(\.region) == ["City of London", "Hackney", "Other"])
+        #expect(groups[1].tours.map(\.name) == ["A", "D"])
+        #expect(tours.filter(\.isPromoted).map(\.name) == ["C"])
+    }
+
+    @Test func listsFromTheTableExcludeTours() throws {
+        let json = """
+        [{"id":"11111111-0000-0000-0000-000000000001","name":"Mine","list_type":"list"},
+         {"id":"11111111-0000-0000-0000-000000000002","name":"Default","list_type":null},
+         {"id":"11111111-0000-0000-0000-000000000003","name":"A tour","list_type":"tour"}]
+        """
+        let lists = try decoder.decode([PlaceList].self, from: Data(json.utf8))
+        #expect(lists.filter { !$0.isTour }.map(\.name) == ["Mine", "Default"])
+    }
+
+    @Test func routeStartsAtFirstUnvisitedStopAndAdvances() {
+        let stops = [place("CURIO-1"), place("CURIO-2"), place("CURIO-3")]
+        #expect(HuntRoute.startIndex(of: stops, checkedIn: ["CURIO-1"]) == 1)
+        #expect(HuntRoute.startIndex(of: stops, checkedIn: ["CURIO-1", "CURIO-2", "CURIO-3"]) == 0)
+
+        var route = HuntRoute(id: UUID(), title: "Tour", isTour: true, stops: stops, startingAt: 1)
+        #expect(route.current.id == "CURIO-2")
+        #expect(route.next?.id == "CURIO-3")
+        #expect(route.progress == "Stop 2 of 3")
+        route.index = 2
+        #expect(route.next == nil)
+        #expect(!route.isComplete(checkedIn: ["CURIO-1", "CURIO-3"]))
+        #expect(route.isComplete(checkedIn: ["CURIO-1", "CURIO-2", "CURIO-3", "CURIO-9"]))
+    }
+
+    @Test func huntStoreRoutesMoveOnAndASinglePlaceClearsThem() {
+        let stops = [place("CURIO-1"), place("CURIO-2")]
+        let hunt = HuntStore()
+        hunt.begin(HuntRoute(id: UUID(), title: "Tour", isTour: true, stops: stops))
+        #expect(hunt.isCompassPresented)
+        #expect(hunt.target?.id == "CURIO-1")
+        hunt.advance()
+        #expect(hunt.target?.id == "CURIO-2")
+        hunt.advance()
+        #expect(hunt.target?.id == "CURIO-2")
+        // Hunting the same place on its own leaves the route.
+        hunt.begin(stops[1])
+        #expect(hunt.route == nil)
+        hunt.end()
+        #expect(hunt.model == nil)
+    }
+
+    @Test func celebrationAddsTheCompletedTour() {
+        let lines = CheckinCelebration.lines(
+            placeName: "Crossbones",
+            outcome: CheckinOutcome(isNew: true, totalCheckins: 7, newBadges: []),
+            completedTour: "Hawksmoor's Spires"
+        )
+        #expect(lines.map(\.title).last == "Tour complete: Hawksmoor's Spires!")
+    }
+
+    @Test func coveringRegionPadsAndHasAMinimumSpan() throws {
+        #expect(MKCoordinateRegion(covering: []) == nil)
+        let one = try #require(MKCoordinateRegion(covering: [CLLocationCoordinate2D(latitude: 51.5, longitude: -0.1)]))
+        #expect(one.span.latitudeDelta == 0.005)
+        let two = try #require(MKCoordinateRegion(covering: [
+            CLLocationCoordinate2D(latitude: 51.5, longitude: -0.1),
+            CLLocationCoordinate2D(latitude: 51.6, longitude: -0.3),
+        ]))
+        #expect(abs(two.center.latitude - 51.55) < 1e-9)
+        #expect(abs(two.span.longitudeDelta - 0.26) < 1e-9)
     }
 }

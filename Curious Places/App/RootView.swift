@@ -37,7 +37,9 @@ private struct MainTabView: View {
     @State private var narration = NarrationService()
     @State private var checkins = CheckinStore(service: CheckinService(client: supabase))
     @State private var hunt = HuntStore()
+    @State private var lists = ListStore(service: Self.listService)
     private let placeService = PlaceService(client: supabase)
+    private static let listService = ListService(client: supabase, places: PlaceService(client: supabase))
 
     var body: some View {
         @Bindable var hunt = hunt
@@ -46,7 +48,7 @@ private struct MainTabView: View {
                 ExploreView(service: placeService)
             }
             Tab("Tours", systemImage: "figure.walk") {
-                ToursView()
+                ToursView(service: Self.listService)
             }
             Tab("Profile", systemImage: "person") {
                 ProfileView()
@@ -62,9 +64,11 @@ private struct MainTabView: View {
         .environment(narration)
         .environment(checkins)
         .environment(hunt)
+        .environment(lists)
         .task { await location.run() }
         // Check-ins belong to the auth user; guests have none.
         .task(id: signedInUserID) { await checkins.load(userID: signedInUserID) }
+        .task(id: signedInUserID) { await lists.load(userID: signedInUserID) }
     }
 
     private var signedInUserID: UUID? {

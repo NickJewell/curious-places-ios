@@ -91,8 +91,14 @@ private struct CompassDial: View {
     let arrowRotation: Double?
     let distance: CLLocationDistance?
     let accuracy: CLLocationAccuracy?
+    /// The distance's point size, scaled with Dynamic Type.
+    @ScaledMetric(relativeTo: .largeTitle) var distanceSize = 56.0
 
     private static let labels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+    private var roundedDistance: Double? {
+        distance.map { $0.rounded() }
+    }
 
     var body: some View {
         ZStack {
@@ -122,9 +128,11 @@ private struct CompassDial: View {
                 .fill(HuntPalette.surface)
                 .scaleEffect(0.55)
             VStack(spacing: 4) {
-                Text(distance.map { "\(Int($0.rounded()))" } ?? "---")
-                    .font(.system(size: 56, weight: .light))
+                Text(roundedDistance.map { "\(Int($0))" } ?? "---")
+                    .font(.system(size: distanceSize, weight: .light))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: roundedDistance ?? 0))
+                    .animation(.snappy, value: roundedDistance)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                 Text("METRES")

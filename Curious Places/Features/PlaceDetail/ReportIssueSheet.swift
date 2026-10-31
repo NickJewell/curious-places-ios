@@ -25,9 +25,10 @@ struct ReportIssueSheet: View {
                         Text("Couldn't send your report. Please try again.")
                             .foregroundStyle(.red)
                     }
+                    .listRowBackground(Theme.surface)
                 }
 
-                Section("What's wrong?") {
+                Section {
                     Picker("Issue", selection: $issueType) {
                         ForEach(IssueType.allCases) { type in
                             Text(type.label).tag(type)
@@ -35,7 +36,10 @@ struct ReportIssueSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                } header: {
+                    Text("What's wrong?").sectionTitleStyle()
                 }
+                .listRowBackground(Theme.surface)
 
                 if issueType == .other {
                     Section {
@@ -49,8 +53,10 @@ struct ReportIssueSheet: View {
                     } footer: {
                         Text("\(IssueReport.maxDescriptionLength - details.count) characters left")
                     }
+                    .listRowBackground(Theme.surface)
                 }
             }
+            .themedList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

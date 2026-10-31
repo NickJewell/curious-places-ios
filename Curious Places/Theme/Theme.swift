@@ -18,6 +18,21 @@ enum Theme {
     static let bronze = Color("Bronze")
 }
 
+extension View {
+    /// Puts a `List` or `Form` on the app background instead of the system grouped grey.
+    /// Rows take `Theme.surface` through `.listRowBackground`.
+    func themedList() -> some View {
+        scrollContentBackground(.hidden)
+            .background(Theme.backgroundRoot)
+    }
+
+    /// List section headers in small caps, echoing the hunt's tracked-caps labels.
+    func sectionTitleStyle() -> some View {
+        font(.subheadline.smallCaps())
+            .textCase(nil)
+    }
+}
+
 /// Light / dark / system, chosen in Profile (the Expo app's theme picker).
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -62,12 +77,15 @@ extension PlaceCategory {
         }
     }
 
+    /// Not the Expo values (#4CAF50, #6D4C8E, #546E7A, bronze), which were the same in both
+    /// modes and fell below 4.5:1 as badge text in one or the other. These are darker in light
+    /// mode and lighter in dark mode, and pass in both (docs/design/ui-audit-2026-10-31.md #3).
     var color: Color {
         switch self {
-        case .open: Color(red: 0x4C / 255, green: 0xAF / 255, blue: 0x50 / 255)
-        case .landmark: Color(red: 0x6D / 255, green: 0x4C / 255, blue: 0x8E / 255)
-        case .built: Color(red: 0x54 / 255, green: 0x6E / 255, blue: 0x7A / 255)
-        case .other: Theme.bronze
+        case .open: Color("CategoryOpen")
+        case .landmark: Color("CategoryLandmark")
+        case .built: Color("CategoryBuilt")
+        case .other: Color("CategoryOther")
         }
     }
 }

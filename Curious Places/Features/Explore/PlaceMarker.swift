@@ -25,6 +25,9 @@ struct PlaceMarker: View {
     var body: some View {
         Image(systemName: state == .visited ? "checkmark" : category.systemImage)
             .font(.system(size: size * 0.42, weight: .semibold))
+            .contentTransition(.symbolEffect(.replace))
+            // Only selection and check-ins bounce, not every marker dimming when a hunt starts.
+            .symbolEffect(.bounce, value: state == .selected || state == .visited)
             .foregroundStyle(foreground)
             .frame(width: size, height: size)
             .background(background, in: .circle)
@@ -53,11 +56,13 @@ struct PlaceMarker: View {
         }
     }
 
+    /// The background colour on the disc, as on the gold buttons: category discs are dark in
+    /// light mode and light in dark mode, so white would fail contrast in one of them.
     private var foreground: Color {
         switch state {
         case .visited: Self.visitedGold
-        case .dimmed: Color(white: 0.47)
-        default: .white
+        case .dimmed: .white.opacity(0.75)
+        default: Theme.backgroundRoot
         }
     }
 

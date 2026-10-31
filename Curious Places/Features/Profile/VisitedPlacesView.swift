@@ -19,7 +19,9 @@ struct VisitedPlacesView: View {
                         Button("Remove", systemImage: "trash", role: .destructive) { remove(checkin) }
                     }
             }
+            .listRowBackground(Theme.surface)
         }
+        .themedList()
         .overlay {
             if checkins.checkins.isEmpty && !checkins.isLoading {
                 ContentUnavailableView(

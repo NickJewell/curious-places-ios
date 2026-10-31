@@ -14,6 +14,7 @@ struct FactCard: View {
     let onReport: (Fact) -> Void
 
     @Environment(NarrationService.self) private var narration
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var deck = FactDeck([])
     @State private var current: Fact?
     @State private var isLoading = true
@@ -45,11 +46,12 @@ struct FactCard: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .background(Theme.surface, in: .rect(cornerRadius: 18))
+                .background(Self.tint, in: .rect(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: current?.id)
+        .animation(.easeInOut(duration: 0.25), value: current?.id)
+        .sensoryFeedback(.selection, trigger: current?.id)
         .task(id: place.id) {
             isLoading = true
             current = nil
@@ -73,6 +75,7 @@ struct FactCard: View {
                 Label("Did you know?", systemImage: "bolt.fill")
                     .font(.headline)
                     .foregroundStyle(Theme.gold)
+                    .symbolEffect(.bounce, value: fact.id)
                 Spacer(minLength: 0)
                 if fact.hasAudio {
                     audioButton
@@ -89,12 +92,18 @@ struct FactCard: View {
 
             Button(action: showNext) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(fact.text)
-                        .font(.body)
-                        .foregroundStyle(Theme.textPrimary)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .environment(\.layoutDirection, fact.language.isRightToLeft ? .rightToLeft : .leftToRight)
+                    // Only the text is replaced; the header and caption stay put.
+                    ZStack(alignment: .topLeading) {
+                        Text(fact.text)
+                            .font(.body)
+                            .fontDesign(.serif)
+                            .foregroundStyle(Theme.textPrimary)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .environment(\.layoutDirection, fact.language.isRightToLeft ? .rightToLeft : .leftToRight)
+                            .id(fact.id)
+                            .transition(factTransition)
+                    }
                     Text("Tap for another fact")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
@@ -105,10 +114,15 @@ struct FactCard: View {
             .accessibilityHint("Shows another fact")
         }
         .padding(14)
-        .background(Theme.surface, in: .rect(cornerRadius: 18))
+        .background(Self.tint, in: .rect(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.border))
-        .id(fact.id)
-        .transition(.opacity)
+    }
+
+    /// A gold wash, so the fact card doesn't look like the narration player.
+    private static let tint = Theme.gold.opacity(0.06)
+
+    private var factTransition: AnyTransition {
+        reduceMotion ? .opacity : AnyTransition(.blurReplace)
     }
 
     @ViewBuilder
@@ -121,6 +135,8 @@ struct FactCard: View {
             Button(action: player.togglePlayback) {
                 Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.title3)
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(.default, value: player.isPlaying)
                     .frame(width: 32, height: 32)
                     .contentShape(.rect)
             }

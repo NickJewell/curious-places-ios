@@ -11,21 +11,31 @@ Full analysis of the Expo app is in `docs/migration/01-inventory.md`. Read §1 "
   1. Foundation and Explore map ✅
   2. Auth: Apple, Google, email and guest, plus the profile and language sync to `profiles.preferred_language` ✅ (code done; needs the dashboard setup below)
   3. Full place detail: facts, audio, votes and issue reports ✅. Code is in `Features/PlaceDetail/`, `Services/NarrationService.swift`, `FactService.swift` and `FeedbackService.swift`, and `supabase/functions/narration/`.
-     - **Narration** autoplays and streams from **public** audio buckets (`supabase/proposed/04`), trying the user's language, then English, then the legacy `audio_overviews_*` buckets. If the description's language has no audio, the app calls the `narration` Edge Function **once**. For English it plays the loading clip meanwhile. It then polls the public URL for up to 90 s, and falls back to any other narration if nothing arrives.
+     - **Narration** autoplays and streams from **public** audio buckets (`supabase/proposed/04`), trying the user's language, then English, then the legacy `audio_overviews_*` buckets. If the description's language has no audio, the app calls the `narration` Edge Function **once**, showing a flashing "Preparing narration…" meanwhile. It deliberately doesn't play the spoken English loading clip that Expo played and the function still returns. It then polls the public URL for up to 90 s, and falls back to any other narration if nothing arrives.
      - **Facts** are read straight from `facts`. "Did you know?" deals random facts without repeats. Facts show in the description language, falling back to English. That fallback is a deliberate extension: Expo showed facts to English users only.
      - **Fact audio** is English only (voice Clive). A fact's position counts all of the place's facts by `created_at`, whatever their language. Many places have bulk-imported facts that share one `created_at`, so their order is arbitrary. For those facts, the app and the function use an id-keyed file (`en_curio_N_fact_<uuid>.mp3`) instead of the server's `en_curio_N_fact_NN_v2.mp3`, so they can't play the wrong fact's audio.
      - **Votes** are for signed-in users only; guests get the sign-in sheet. Thumbs up toggles. Thumbs down opens "Report an Issue", and sending a place report records the down vote. The user's vote is loaded when the page opens, which Expo never did. Setting a vote deletes the user's own rows and then inserts; deletes are always scoped to `user_id`.
      - **Reports** go to `issues` (not `content_reports`). `user_id` is the *profile* id (that's the foreign key), or null for guests.
-  4. Compass hunt, check-ins and badges ✅ (code done; needs `proposed/06` applied). Code is in `Features/Hunt/`, `Services/CheckinService.swift` and `CheckinStore.swift`, and `Features/Profile/`.
+  4. Compass hunt, check-ins and badges ✅. Code is in `Features/Hunt/`, `Services/CheckinService.swift` and `CheckinStore.swift`, and `Features/Profile/`.
      - **Hunt** starts from "Hunt" on the map panel or "Navigate Here" on place detail. The compass is a full-screen cover with a map page and a compass page. The chevron puts it away without ending the hunt, and the map then offers "Resume Compass". `HuntStore` holds the target app-wide.
      - **Sensors.** Headings only come through a `CLLocationManager` delegate (there's no async API), and `trueHeading` needs that manager's location updates too. So `HuntModel` runs its own manager at navigation accuracy for the life of the hunt. The Expo numbers are kept verbatim in `HuntMath`: arrival under 10 m, check-in under 40 m, both only on fixes accurate to 20 m; a 0.2 circular-mean low-pass, blended 0.6 with the GPS course above 1 m/s; a calibration hint above 30°. Arrival sticks once reached. With no magnetometer (e.g. the simulator) the needle is hidden and the map page still works.
      - **Check-ins** are for signed-in users; guests in range get "Sign In to Check In". `checkins.user_id` is the *auth* user id (unlike `issues`). A `23505` duplicate counts as already checked in.
      - **Removing a check-in** fails loudly. The delete asks for the deleted rows back, and an empty result is an error, because without the DELETE policy in `06` the request "succeeds" and deletes nothing (Expo's silent bug).
-     - **Badges are awarded by the database**, by the trigger in `06`. The app never inserts into `user_badges`; it diffs the earned badges before and after a check-in to show what's new. Until `06` is applied, iOS check-ins earn no badges.
+     - **Badges are awarded by the database**, by the trigger in `06`. The app never inserts into `user_badges`; it diffs the earned badges before and after a check-in to show what's new.
      - **The celebration sheet shows only real outcomes**: the discovery, the visit count (with the Expo milestone copy for 1, 5, 10, 25 and every tenth), and newly earned badges. That's a deliberate change: Expo also awarded "points" that were never stored. The Expo "badge unlocked" modal and confetti never fired, so they weren't ported.
      - **Profile** reads `checkins`, `user_badges` and `badges` directly, not the `get_user_progress` RPC. It shows the visit and badge counts, the trophy case, the five latest visits and a full "Places Visited" list, with swipe to remove.
-  5. Lists and tours
-  6. Admin (undecided)
+  5. Lists and tours ✅. Code is in `Features/Tours/`, `Features/Lists/`, `Services/ListService.swift` and `ListStore.swift`, and `Models/PlaceList.swift`.
+     - **The live `list_items` table isn't the Expo migration's.** Its key is `list_item_uuid`, `list_id` is *text*, rows point at their list through `list_uuid`, and there are no copied place names or coordinates. It also had no policies, so Expo's "Save to list" never worked and tours only loaded through the Replit server. The app matches items on `list_uuid`, writes `list_id` as the same id in lowercase text, and fetches the places separately (`PlaceService.places(ids:)`), dropping hidden ones.
+     - **Tours** are `lists` rows with `list_type = 'tour'`: a Featured section (`promoted_flag`), then groups by start region. There's no `metadata` column, so no hero images. `tour_length` is a duration ("2-3 hours").
+     - **Guided routes** (a deliberate extension; Expo's "Start Tour" only opened stop 1). "Start Tour" and a list's "Start Hunt" begin a `HuntRoute` in `HuntStore` at the first stop not yet checked in. The compass shows "Stop n of m", "Next Stop" after arriving or checking in, and "Skip Stop". "Navigate Here" on a stop's detail page starts the route at that stop.
+     - **Tour completion** is recorded by the database: checking in at every visible stop of a tour adds a `tour_completions` row and awards the `tour_complete` badge (Tour Guide), by the trigger in `07`. Clients can't write either. The celebration adds "Tour complete" when a check-in finishes the route's tour.
+     - **Lists** are for signed-in users. Save from the map panel opens "Save to List", where lists holding the place are ticked and tapping one removes it again. Lists can be renamed, reordered (one update per row, as Expo) and deleted; deleting a list deletes its items through the foreign key in `07`.
+  6. Walking directions ✅. The plan and its outcome are in `docs/milestones/06-walking-directions.md`. Code is in `Features/Hunt/RouteMath.swift`, `Services/DirectionsService.swift`, `HuntModel` and `HuntMapView`.
+     - **What the user sees:** a gold MapKit walking route on the hunt's map page, with a dashed last leg from where the route ends (the nearest path) to the place. The pill reads "12 min · 850 m" and counts down locally (`RouteGeometry` projects the user onto the polyline). Under 75 m it says "Use the compass". "Open in Maps" in the hunt header hands off to Apple Maps.
+     - **Unchanged:** the compass, arrival and check-in keep the straight-line distance and the `HuntMath` thresholds.
+     - **Throttling:** directions requests are throttled per device, so `RoutePolicy` drives them by events: the first fix accurate to 100 m, then more than 30 m off the route on a 20 m fix, at least 20 s apart, at most 15 per stop, and a 60 s back-off after any failure. Any failure keeps the last route, or falls back to the straight-line pill.
+     - **Not done yet:** a real walk on a device, and the 6b items (tour legs, trimming the walked part of the line).
+  7. Admin (undecided)
 
 **Auth.** Code is in `Services/SessionStore.swift` and `Features/Auth/`.
 - **Google:** OAuth in a web sheet, returning to `curiousplaces://auth/callback`.
@@ -57,7 +67,9 @@ Known limits of the `narration` function:
 - **Anyone with the anon key can call it, and each call spends InWorld credit.** Caching limits this to one call per file, but someone could still request every curio in all 11 languages. The Replit server had the same exposure.
 - **InWorld's text-length limit isn't handled,** as on the server. If long overviews never generate, check there first.
 
-**Milestone 4 setup:** apply `supabase/proposed/06_checkins_and_badges.sql`, which is the same as §5, §9 and §10 of `01` plus a one-off badge backfill. It adds the `checkins` DELETE policy (until then "Remove Check-in" shows an error), replaces client badge inserts with an award trigger (until then iOS check-ins earn no badges), and restricts `get_user_progress` to the caller's own progress.
+**Milestone 4 setup** (done 2026-10-31: `06` applied): `supabase/proposed/06_checkins_and_badges.sql` is the same as §5, §9 and §10 of `01` plus a one-off badge backfill. It adds the `checkins` DELETE policy, replaces client badge inserts with an award trigger, and restricts `get_user_progress` to the caller's own progress.
+
+**Milestone 5 setup** (`07` seen live on 2026-10-31: tour stops readable with the anon key, `tour_completions` exists): `supabase/proposed/07_lists_and_tours.sql` was tested against the pulled schema in a local Supabase Postgres. It supersedes §3 and §4 of `01`, whose stop policy compares a uuid with the text `list_id` and can't be created. It adds the `list_items` policies, stops users creating "tours", adds the list foreign key with cascade, a unique (list, place) index unless duplicates exist, and `tour_completions` with its trigger and a backfill.
 
 **Release blocker:** deleting an account that signed in with Apple must also revoke its Apple tokens. That needs an Edge Function, which isn't built yet.
 
@@ -89,7 +101,7 @@ Where to look:
 - **Directly from Supabase:** `places`, `lists`, `list_items`, `checkins`, `badges`, `user_badges`, and the `get_user_progress` RPC.
 - **Through the Express server on Replit (`server/routes.ts`):** `/api/map/viewport` (places in the current map area) and `/api/tours`.
 
-Before porting the map or tours, decide whether the iOS app should call that server or query Supabase directly.
+The iOS app replaces both with direct Supabase queries (map since milestone 1, tours since milestone 5).
 
 ## Project setup
 
@@ -100,7 +112,10 @@ Before porting the map or tours, decide whether the iOS app should call that ser
 
 ## Porting notes
 
-- Map: the Expo app uses Google Maps with custom light and dark styles. MapKit is the natural iOS replacement, so map styling will need rethinking.
+- Map: the Expo app uses Google Maps with custom light and dark styles. MapKit is the natural iOS replacement; every map uses `.standard(emphasis: .muted)` so the markers stand out.
 - Compass hunt: magnetometer heading with a circular-mean low-pass filter, arrival detected within 10 m, plus haptics. On iOS this maps to `CLLocationManager` heading updates.
-- Theme: a warm cream light palette (`#F5F2ED`) and a deep navy dark palette (`#0A0E14`) with gold accents. The exact values are in `theme.ts`.
+- Theme: a warm cream light palette (`#F5F2ED`) and a deep navy dark palette (`#0A0E14`) with gold accents. The exact values are in `theme.ts`. Every screen sits on `Theme.backgroundRoot`, including `List`/`Form` screens (`.themedList()` plus `.listRowBackground(Theme.surface)`) and the always-dark hunt.
+- **Design departures** (from the 2026-10-31 UI audit, `docs/design/ui-audit-2026-10-31.md`):
+  - **Category colours aren't Expo's.** They're `Category*` colour sets with light and dark variants, because the Expo values failed 4.5:1 as badge text. Marker glyphs use `Theme.backgroundRoot`, not white.
+  - **Typography roles:** serif for stories, place names and tour names (the Expo `design_guidelines.md` asked for this but never shipped it); rounded for counts; SF for controls and metadata.
 - Audio narration autoplays when a place detail page opens.

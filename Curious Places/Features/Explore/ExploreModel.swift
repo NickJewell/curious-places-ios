@@ -59,8 +59,10 @@ final class ExploreModel {
     }
 
     /// Markers to show: everything fetched, filtered, unless there are too many in view.
+    /// The selected place always stays, so its marker doesn't vanish under its own panel.
     var visiblePlaces: [Place] {
-        tooManyPlaces ? [] : fetched.filter(filter.includes)
+        if tooManyPlaces { return selectedPlace.map { [$0] } ?? [] }
+        return fetched.filter(filter.includes)
     }
 
     func select(id: String?) {

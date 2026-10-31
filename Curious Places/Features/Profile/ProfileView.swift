@@ -27,8 +27,18 @@ struct ProfileView: View {
                     Section {
                         Text("You're exploring as a guest. Sign in to save places, check in and earn badges.")
                             .foregroundStyle(Theme.textSecondary)
-                        Button("Sign In or Create Account") { showsSignIn = true }
+                        Button { showsSignIn = true } label: {
+                            Text("Sign In or Create Account")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.large)
+                        .tint(Theme.gold)
+                        .foregroundStyle(Theme.backgroundRoot)
                     }
+                    .listRowBackground(Theme.surface)
                 }
 
                 Section {
@@ -38,19 +48,23 @@ struct ProfileView: View {
                         }
                     }
                 } header: {
-                    Text("Language")
+                    Text("Language").sectionTitleStyle()
                 } footer: {
                     Text("Place descriptions are shown in this language when a translation exists.")
                 }
+                .listRowBackground(Theme.surface)
 
-                Section("Appearance") {
+                Section {
                     Picker("Appearance", selection: $appearance) {
                         ForEach(AppAppearance.allCases) { appearance in
                             Text(appearance.label).tag(appearance)
                         }
                     }
                     .pickerStyle(.segmented)
+                } header: {
+                    Text("Appearance").sectionTitleStyle()
                 }
+                .listRowBackground(Theme.surface)
 
                 if session.status == .signedIn {
                     Section {
@@ -59,8 +73,10 @@ struct ProfileView: View {
                         }
                         Button("Delete Account", role: .destructive) { confirmsDelete = true }
                     }
+                    .listRowBackground(Theme.surface)
                 }
             }
+            .themedList()
             .navigationTitle("Profile")
             .refreshable { await checkins.reload() }
             .sheet(item: $selectedBadge) { badge in
@@ -91,13 +107,21 @@ struct ProfileView: View {
     @ViewBuilder
     private var progressSections: some View {
         Section {
+            let visits = checkins.isLoading && checkins.checkins.isEmpty ? nil : checkins.checkins.count
+            HStack {
+                stat(visits.map(String.init) ?? "–", label: "Places visited",
+                     spoken: visits.map(String.init) ?? "Loading")
+                Divider().frame(height: 36)
+                stat("\(checkins.earned.count)/\(checkins.badges.count)", label: "Badges",
+                     spoken: "\(checkins.earned.count) of \(checkins.badges.count)")
+            }
+            .padding(.vertical, 4)
+
             NavigationLink {
                 VisitedPlacesView()
             } label: {
-                LabeledContent("Places Visited", value: checkins.isLoading && checkins.checkins.isEmpty
-                               ? "–" : "\(checkins.checkins.count)")
+                Label("Places Visited", systemImage: "mappin.and.ellipse")
             }
-            LabeledContent("Badges Earned", value: "\(checkins.earned.count) of \(checkins.badges.count)")
             if checkins.loadFailed {
                 HStack {
                     Label("Couldn't load your progress.", systemImage: "wifi.exclamationmark")
@@ -107,16 +131,20 @@ struct ProfileView: View {
                 }
             }
         }
+        .listRowBackground(Theme.surface)
 
         if !checkins.badges.isEmpty {
-            Section("Trophy Case") {
+            Section {
                 TrophyCase(badges: checkins.badges, isEarned: { checkins.earnedBadge($0) != nil }) { badge in
                     selectedBadge = badge
                 }
+            } header: {
+                Text("Trophy Case").sectionTitleStyle()
             }
+            .listRowBackground(Theme.surface)
         }
 
-        Section("Recent Visits") {
+        Section {
             if checkins.checkins.isEmpty {
                 Text(checkins.isLoading ? "Loading…" : "No visits yet. Hunt for a place on the map and check in when you get there.")
                     .foregroundStyle(Theme.textSecondary)
@@ -127,7 +155,30 @@ struct ProfileView: View {
                         Button("Remove", systemImage: "trash", role: .destructive) { remove(checkin) }
                     }
             }
+        } header: {
+            Text("Recent Visits").sectionTitleStyle()
         }
+        .listRowBackground(Theme.surface)
+    }
+
+    /// A headline number: visits or badges.
+    private func stat(_ value: String, label: String, spoken: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.title.bold())
+                .fontDesign(.rounded)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.snappy, value: value)
+                .foregroundStyle(Theme.gold)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(spoken)
     }
 
     private func remove(_ checkin: Checkin) {
@@ -189,6 +240,7 @@ private struct ProfileHeader: View {
             }
             .padding(.vertical, 4)
         }
+        .listRowBackground(Theme.surface)
     }
 }
 

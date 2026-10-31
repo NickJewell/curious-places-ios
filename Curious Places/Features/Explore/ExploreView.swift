@@ -10,12 +10,18 @@ struct ExploreView: View {
     @Environment(LocationProvider.self) private var location
     @Environment(HuntStore.self) private var hunt
     @Environment(CheckinStore.self) private var checkins
+    @Environment(ListStore.self) private var lists
+    @Environment(SessionStore.self) private var session
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.deviceDefault()
     @State private var model: ExploreModel
-    @State private var position: MapCameraPosition = .userLocation(fallback: .region(.london))
+    @State private var position: MapCameraPosition = .region(.london)
+    /// Set once the map has moved to the user's first fix, so later fixes don't pull it back.
+    @State private var hasCentredOnUser = false
     @State private var detailPlace: Place?
     /// Set when "Navigate Here" is tapped in the detail sheet; the hunt starts once it closes.
     @State private var pendingHunt: Place?
+    @State private var savingPlace: Place?
+    @State private var showsSignIn = false
 
     init(service: PlaceService) {
         _model = State(initialValue: ExploreModel(service: service))
@@ -40,7 +46,7 @@ struct ExploreView: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
         .mapControls {
             MapUserLocationButton()
             MapCompass()
@@ -52,6 +58,7 @@ struct ExploreView: View {
         .onChange(of: language) {
             model.reload(language: language)
         }
+        .onChange(of: location.location != nil, initial: true) { centreOnUser() }
         .safeAreaInset(edge: .top) {
             ExploreHeader(model: model, language: language, showsFilters: !hunt.isHunting)
         }
@@ -64,8 +71,10 @@ struct ExploreView: View {
                     place: place,
                     distance: location.distance(to: place.coordinate),
                     isVisited: checkins.isCheckedIn(place.id),
+                    isSaved: lists.isSaved(place.id),
                     onRead: { detailPlace = place },
                     onHunt: { startHunt(place) },
+                    onSave: { save(place) },
                     onClose: { model.select(id: nil) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -83,6 +92,15 @@ struct ExploreView: View {
                 pendingHunt = place
                 detailPlace = nil
             }
+        }
+        .sheet(item: $savingPlace) { place in
+            SaveToListSheet(place: place)
+        }
+        .sheet(isPresented: $showsSignIn) {
+            SignInView(allowsGuest: false)
+        }
+        .onChange(of: session.status) {
+            if session.status == .signedIn { showsSignIn = false }
         }
     }
 
@@ -104,6 +122,29 @@ struct ExploreView: View {
         if checkins.isCheckedIn(place.id) { return .visited }
         if hunt.isHunting { return .dimmed }
         return place.id == model.selectedPlace?.id ? .selected : .ambient
+    }
+
+    /// Lists belong to signed-in users; guests get the sign-in sheet.
+    private func save(_ place: Place) {
+        if session.status == .signedIn {
+            savingPlace = place
+        } else {
+            showsSignIn = true
+        }
+    }
+
+    /// Moves to the user once their first fix arrives (MapScreen.tsx:494-512). MapKit's own
+    /// `.userLocation` camera only does this if it already has a fix when the map appears.
+    private func centreOnUser() {
+        guard !hasCentredOnUser, let user = location.location?.coordinate else { return }
+        hasCentredOnUser = true
+        // Leave the map alone if the user has already moved it, or a hunt has framed it.
+        guard !position.positionedByUser, !hunt.isHunting else { return }
+        withAnimation {
+            position = .region(MKCoordinateRegion(
+                center: user, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            ))
+        }
     }
 
     /// Shows the user and the target together, then opens the compass (MapScreen.tsx:352-368).
@@ -172,6 +213,7 @@ private struct ExploreHeader: View {
         }
         .padding(.horizontal)
         .padding(.top, 4)
+        .sensoryFeedback(.selection, trigger: model.filter)
     }
 }
 

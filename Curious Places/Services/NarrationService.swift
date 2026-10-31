@@ -18,8 +18,6 @@ nonisolated struct NarrationTrack: Equatable, Sendable {
 /// Paths match the Expo server: `routes.ts:244-345` (current) and
 /// `server_dist/index.js:94-125` (legacy pre-generated audio).
 nonisolated enum NarrationLocator {
-    static let loadingClip = (bucket: "en_audio", path: "en_loading_overview.mp3")
-
     static func candidates(curioID: String, language: AppLanguage, baseURL: URL) -> [NarrationTrack] {
         guard let number = curioNumber(curioID) else { return [] }
         var tracks: [NarrationTrack] = []
@@ -82,9 +80,9 @@ nonisolated enum NarrationLocator {
 nonisolated enum NarrationGeneration: Equatable, Sendable {
     /// The file exists now.
     case ready(NarrationTrack)
-    /// The file is being generated in the background. `loadingClip` is the English
-    /// "just getting information on this place" message to play meanwhile, if any.
-    case generating(NarrationTrack, loadingClip: URL?)
+    /// The file is being generated in the background. The function also returns its
+    /// English "loading" clip; the app doesn't play it, and shows "Preparing narration…" instead.
+    case generating(NarrationTrack)
 }
 
 /// Finds which narration file exists for a place, and asks the `narration` Edge Function
@@ -136,11 +134,7 @@ final class NarrationService {
         )
         let track = NarrationTrack(url: NarrationLocator.publicURL(bucket: response.bucket, path: response.path, baseURL: baseURL),
                                    language: language)
-        guard response.status == "generating" else { return .ready(track) }
-        let loadingClip = response.loading.map {
-            NarrationLocator.publicURL(bucket: $0.bucket, path: $0.path, baseURL: baseURL)
-        }
-        return .generating(track, loadingClip: loadingClip)
+        return response.status == "generating" ? .generating(track) : .ready(track)
     }
 
     /// Polls until a generated track appears, up to `generationTimeout`. False if it
@@ -199,14 +193,8 @@ nonisolated private struct GenerationRequest: Encodable, Sendable {
 }
 
 nonisolated private struct GenerationResponse: Decodable, Sendable {
-    struct File: Decodable, Sendable {
-        let bucket: String
-        let path: String
-    }
-
     /// "ready" or "generating".
     let status: String
     let bucket: String
     let path: String
-    let loading: File?
 }

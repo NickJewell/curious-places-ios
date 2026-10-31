@@ -41,7 +41,7 @@ struct PlaceDetailView: View {
                         Marker(place.name, systemImage: place.category.systemImage, coordinate: place.coordinate)
                             .tint(place.category.color)
                     }
-                    .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+                    .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
                     .frame(height: 200)
                     .clipShape(.rect(cornerRadius: 18))
 
@@ -60,6 +60,7 @@ struct PlaceDetailView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(place.name)
                             .font(.title.weight(.bold))
+                            .fontDesign(.serif)
                             .foregroundStyle(Theme.textPrimary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         VoteButtons(vote: feedback.vote, onUp: voteUp, onDown: voteDown)
@@ -72,6 +73,8 @@ struct PlaceDetailView: View {
 
                     NarrationView(place: place, player: narrationPlayer)
 
+                    StoryDivider()
+
                     if place.overviewText.isEmpty {
                         Text("There's no description for this place yet.")
                             .foregroundStyle(Theme.textSecondary)
@@ -82,12 +85,16 @@ struct PlaceDetailView: View {
                                 .font(.footnote)
                                 .foregroundStyle(Theme.textSecondary)
                         }
+                        // Stories in serif, as the Expo design guidelines asked; controls stay in SF.
                         OverviewText(place: place)
                             .font(.body)
+                            .fontDesign(.serif)
                             .foregroundStyle(Theme.textPrimary)
-                            .lineSpacing(4)
+                            .lineSpacing(6)
                             .textSelection(.enabled)
                     }
+
+                    StoryDivider()
 
                     FactCard(place: place, player: factPlayer) { fact in
                         reportSource = .fact(fact.id)
@@ -163,5 +170,15 @@ struct PlaceDetailView: View {
                                  userID: session.profile?.id)
         try await feedback.submit(report, about: source, voterID: voterID)
         didReport = true
+    }
+}
+
+/// A gold hairline that fades out at both ends, between the player, the story and the facts.
+private struct StoryDivider: View {
+    var body: some View {
+        LinearGradient(colors: [.clear, Theme.gold.opacity(0.35), .clear], startPoint: .leading, endPoint: .trailing)
+            .frame(height: 1)
+            .padding(.vertical, 4)
+            .accessibilityHidden(true)
     }
 }

@@ -12,6 +12,8 @@ struct HuntView: View {
     private struct Celebration: Identifiable {
         let id = UUID()
         let outcome: CheckinOutcome
+        /// The tour this check-in finished, if any.
+        let completedTour: String?
     }
 
     @Environment(HuntStore.self) private var hunt
@@ -24,8 +26,10 @@ struct HuntView: View {
     @State private var confirmsRemove = false
     @State private var showsSignIn = false
     @State private var errorMessage: String?
+    @State private var showsDetail = false
 
     private var target: Place { model.target }
+    private var route: HuntRoute? { hunt.route }
     private var isCheckedIn: Bool { checkins.isCheckedIn(target.id) }
 
     var body: some View {
@@ -53,16 +57,26 @@ struct HuntView: View {
                 checkInControls
                     .padding(.horizontal)
 
-                Button(action: hunt.end) {
-                    Label("End Hunt", systemImage: "chevron.left")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 12) {
+                    Button(action: hunt.end) {
+                        Label(route == nil ? "End Hunt" : "End Tour", systemImage: "chevron.left")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface, foreground: .secondary))
+                    if route?.next != nil {
+                        Button(action: hunt.advance) {
+                            Label(isCheckedIn ? "Next Stop" : "Skip Stop", systemImage: "forward.end")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface,
+                                                     foreground: isCheckedIn ? Theme.gold : .secondary))
+                    }
                 }
-                .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface, foreground: .secondary))
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(Theme.backgroundRoot.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .overlay {
             if model.isAuthorizationDenied {
@@ -71,7 +85,7 @@ struct HuntView: View {
                     systemImage: "location.slash",
                     description: Text("Allow Curious Places to use your location in Settings to hunt for places.")
                 )
-                .background(Color.black)
+                .background(Theme.backgroundRoot)
             }
         }
         .onAppear { model.start() }
@@ -82,7 +96,11 @@ struct HuntView: View {
             if session.status == .signedIn { showsSignIn = false }
         }
         .sheet(item: $celebration) { celebration in
-            CheckinSuccessView(placeName: target.name, outcome: celebration.outcome)
+            CheckinSuccessView(placeName: target.name, outcome: celebration.outcome,
+                               completedTour: celebration.completedTour)
+        }
+        .sheet(isPresented: $showsDetail) {
+            PlaceDetailView(place: target)
         }
         .sheet(isPresented: $showsSignIn) {
             SignInView(allowsGuest: false)
@@ -113,12 +131,27 @@ struct HuntView: View {
             .accessibilityLabel("Back to the map")
             .accessibilityHint("The hunt carries on")
 
-            Text(target.name)
-                .font(.headline)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
+            VStack(spacing: 2) {
+                Text(target.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                if let route {
+                    Text("\(route.progress) · \(route.title)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
 
-            Color.clear.frame(width: 44, height: 44)
+            // Spoken turn-by-turn is Apple Maps' job; the hunt carries on meanwhile.
+            Button(action: model.openInMaps) {
+                Image(systemName: "arrow.triangle.turn.up.right.diamond")
+                    .font(.headline)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("Walking directions in Maps")
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 8)
@@ -133,9 +166,12 @@ struct HuntView: View {
                 .font(.system(size: 80))
                 .foregroundStyle(isCheckedIn ? HuntPalette.green : Theme.gold)
                 .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: isCheckedIn)
+            // Gold until the check-in lands, then green, matching the icon above.
             Text(isCheckedIn ? "Checked In!" : "You Arrived!")
                 .font(.largeTitle.bold())
-                .foregroundStyle(HuntPalette.green)
+                .fontDesign(.serif)
+                .foregroundStyle(isCheckedIn ? HuntPalette.green : Theme.gold)
             Text(target.name)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.white)
@@ -146,14 +182,34 @@ struct HuntView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(4)
             }
+            Button("Read More") { showsDetail = true }
+                .font(.subheadline.weight(.semibold))
+                .tint(Theme.gold)
             Spacer()
             checkInControls
-            Button(isCheckedIn ? "Done" : "Complete Hunt", action: hunt.end)
-                .frame(maxWidth: .infinity)
-                .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface, foreground: .white))
+            if let next = route?.next {
+                Button(action: hunt.advance) {
+                    Label("Next Stop: \(next.name)", systemImage: "forward.end")
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(HuntButtonStyle(fill: Theme.gold, foreground: .black))
+                Button("End Tour", action: hunt.end)
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface, foreground: .white))
+            } else {
+                Button(finishTitle, action: hunt.end)
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(HuntButtonStyle(fill: HuntPalette.surface, foreground: .white))
+            }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
+    }
+
+    private var finishTitle: String {
+        if route != nil { return "Finish Tour" }
+        return isCheckedIn ? "Done" : "Complete Hunt"
     }
 
     // MARK: - Check-in
@@ -218,7 +274,12 @@ struct HuntView: View {
             defer { isSaving = false }
             do {
                 let outcome = try await checkins.checkIn(target, userID: userID)
-                if outcome.isNew { celebration = Celebration(outcome: outcome) }
+                guard outcome.isNew else { return }
+                // The database records a tour as complete once every stop is checked in (proposed/07).
+                let completedTour = route.flatMap { route in
+                    route.isTour && route.isComplete(checkedIn: checkins.checkedInIDs) ? route.title : nil
+                }
+                celebration = Celebration(outcome: outcome, completedTour: completedTour)
             } catch {
                 errorMessage = "Couldn't check in. Check your connection and try again."
             }
@@ -239,12 +300,13 @@ struct HuntView: View {
     }
 }
 
-/// Fixed colours from the Expo hunt screens, which are always dark.
+/// Colours for the hunt screens, which are always dark. The fixed ones are the Expo app's;
+/// the surface is the theme's, so the hunt sits on the same navy as the rest of the app.
 enum HuntPalette {
     static let green = Color(red: 0x4C / 255, green: 0xAF / 255, blue: 0x50 / 255)
     static let red = Color(red: 0xE7 / 255, green: 0x4C / 255, blue: 0x3C / 255)
     static let needle = Color(red: 0xE5 / 255, green: 0x39 / 255, blue: 0x35 / 255)
-    static let surface = Color(white: 0.12)
+    static let surface = Theme.surface
 }
 
 struct HuntButtonStyle: ButtonStyle {

@@ -7,8 +7,9 @@ import SwiftUI
 
 /// Finds a place's narration and plays it, starting automatically as the Expo app did.
 /// When the narration for the description's language is missing, asks the Edge Function
-/// to generate it (playing the English "loading" clip meanwhile) and falls back to any
-/// other narration if that fails. Shows nothing when the place has no audio at all.
+/// to generate it (with "Preparing narration…" flashing meanwhile, rather than Expo's spoken
+/// loading clip) and falls back to any other narration if that fails. Shows nothing when
+/// the place has no audio at all.
 struct NarrationView: View {
     let place: Place
     let player: NarrationPlayer
@@ -21,6 +22,7 @@ struct NarrationView: View {
     }
 
     @Environment(NarrationService.self) private var service
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = Phase.searching
     @State private var scrubPosition: Double?
 
@@ -30,7 +32,15 @@ struct NarrationView: View {
             case .searching:
                 status("Finding narration…")
             case .preparing:
-                status("Preparing narration…")
+                // Generation takes a while, so the text flashes to show it's working.
+                Text("Preparing narration…")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.25]) { content, opacity in
+                        content.opacity(opacity)
+                    } animation: { _ in
+                        .easeInOut(duration: 0.8)
+                    }
             case .ready(let track):
                 controls(for: track)
             case .unavailable:
@@ -70,10 +80,7 @@ struct NarrationView: View {
         switch result {
         case .ready(let track):
             return track
-        case .generating(let track, let loadingClip):
-            if let loadingClip {
-                await player.load(loadingClip, autoplay: true)
-            }
+        case .generating(let track):
             return await service.waitUntilAvailable(track, curioID: place.id) ? track : nil
         }
     }
@@ -97,6 +104,8 @@ struct NarrationView: View {
             Button(action: player.togglePlayback) {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title3)
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(.default, value: player.isPlaying)
                     .foregroundStyle(Theme.backgroundRoot)
                     .frame(width: 48, height: 48)
                     .background(Theme.gold, in: .circle)

@@ -40,12 +40,16 @@ struct SignInView: View {
                     Button {
                         run { try await session.signInWithGoogle() }
                     } label: {
+                        // A card-surface capsule: the bordered style's grey fill read as disabled.
                         Label("Continue with Google", systemImage: "globe")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(Theme.textPrimary)
                             .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(Theme.surface, in: .capsule)
+                            .overlay(Capsule().stroke(Theme.border))
+                            .contentShape(.capsule)
                     }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .tint(Theme.textPrimary)
+                    .buttonStyle(.plain)
 
                     if showsEmailForm {
                         EmailSignInForm(isWorking: $isWorking, errorMessage: $errorMessage)
@@ -99,6 +103,7 @@ struct SignInView: View {
 
             Text("Discover\n\(Text("Hidden London").foregroundStyle(Theme.gold))")
                 .font(.largeTitle.weight(.bold))
+                .fontDesign(.serif)
                 .foregroundStyle(Theme.textPrimary)
 
             Text("Uncover mysteries, legends, and forgotten stories scattered across the city.")

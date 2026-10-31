@@ -4,14 +4,18 @@
 //
 
 import CoreLocation
+import MapKit
 import Observation
 
 /// Sensors and progress for one hunt: precise location, a smoothed compass heading,
-/// the distance and bearing to the target, and arrival.
+/// the distance and bearing to the target, arrival, and a walking route.
 ///
 /// Headings only come through a `CLLocationManager` delegate, and `trueHeading` is
 /// only valid while that same manager delivers locations. So the hunt runs its own
 /// manager at navigation accuracy, alongside the app-wide `LocationProvider`.
+///
+/// The walking route is only for the map page. Arrival and check-in always use the
+/// straight-line distance.
 @Observable
 final class HuntModel: NSObject, CLLocationManagerDelegate {
     enum Page: String, CaseIterable, Identifiable {
@@ -44,10 +48,21 @@ final class HuntModel: NSObject, CLLocationManagerDelegate {
     private(set) var arrowRotation: Double = 0
     private(set) var isAuthorizationDenied = false
 
-    private let manager = CLLocationManager()
+    /// Apple's walking route from where the user was when it was asked for. Nil until the
+    /// first one arrives, and kept when a later request fails.
+    private(set) var walkingRoute: MKRoute?
+    /// Where the user is along `walkingRoute`, updated on every fix without new requests.
+    private(set) var routeProgress: RouteProgress?
 
-    init(target: Place) {
+    private let manager = CLLocationManager()
+    private let directions: DirectionsService
+    private var routePath: [MKMapPoint] = []
+    private var routePolicy = RoutePolicy()
+    private var routeTask: Task<Void, Never>?
+
+    init(target: Place, directions: DirectionsService = DirectionsService()) {
         self.target = target
+        self.directions = directions
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
@@ -63,6 +78,29 @@ final class HuntModel: NSObject, CLLocationManagerDelegate {
     var needsCalibration: Bool {
         guard let headingAccuracy else { return false }
         return headingAccuracy < 0 || headingAccuracy > HuntMath.calibrationAccuracy
+    }
+
+    /// Where the route ends. Walking routes stop at the nearest path, which can be some
+    /// way from a plaque in a churchyard, so the map draws the rest as a dashed line.
+    var routeEnd: CLLocationCoordinate2D? {
+        routePath.last?.coordinate
+    }
+
+    /// Metres left along the route, plus the dashed last leg to the place. Nil without a route.
+    var remainingWalkingDistance: CLLocationDistance? {
+        guard let routeProgress, let end = routePath.last else { return nil }
+        return routeProgress.remainingDistance + end.distance(to: MKMapPoint(target.coordinate))
+    }
+
+    /// Seconds left at the route's own pace, or nil without a route.
+    var remainingWalkingTime: TimeInterval? {
+        guard let walkingRoute, let remainingWalkingDistance else { return nil }
+        return RouteGeometry.remainingTime(remainingWalkingDistance, routeDistance: walkingRoute.distance,
+                                           routeTime: walkingRoute.expectedTravelTime)
+    }
+
+    func openInMaps() {
+        directions.openWalkingDirectionsInMaps(to: target)
     }
 
     func start() {
@@ -85,6 +123,34 @@ final class HuntModel: NSObject, CLLocationManagerDelegate {
         let distance = location.distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
         progress.update(distance: distance, accuracy: location.horizontalAccuracy)
         updateRotations()
+        updateRoute(at: location, distance: distance)
+    }
+
+    /// Tracks progress along the current route, and asks for a new one when `RoutePolicy`
+    /// says so: on the first usable fix, then only when the user strays from the route.
+    private func updateRoute(at location: CLLocation, distance: CLLocationDistance) {
+        routeProgress = RouteGeometry.progress(of: MKMapPoint(location.coordinate), along: routePath)
+        let now = Date.now
+        guard routeTask == nil,
+              routePolicy.shouldRequest(distanceToTarget: distance, accuracy: location.horizontalAccuracy,
+                                        offRoute: routeProgress?.offRouteDistance, now: now) else { return }
+        routePolicy.didRequest(at: now)
+        let start = location.coordinate
+        // Not cancelled when the compass is put away: the route is still wanted on return.
+        routeTask = Task {
+            defer { routeTask = nil }
+            do {
+                let route = try await directions.walkingRoute(from: start, to: target)
+                walkingRoute = route
+                routePath = Array(UnsafeBufferPointer(start: route.polyline.points(), count: route.polyline.pointCount))
+                routeProgress = self.location.flatMap {
+                    RouteGeometry.progress(of: MKMapPoint($0.coordinate), along: routePath)
+                }
+            } catch {
+                // Throttled, offline or no route: keep any route we have and try again later.
+                routePolicy.didFail(at: .now)
+            }
+        }
     }
 
     private func apply(_ reading: CLHeading) {
