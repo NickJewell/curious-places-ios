@@ -33,6 +33,11 @@ nonisolated struct Place: Identifiable, Sendable {
         !(translatedOverview ?? "").isEmpty
     }
 
+    /// The language `overviewText` is in, and so the narration to look for or generate.
+    var overviewLanguage: AppLanguage {
+        isShowingTranslation ? language : .english
+    }
+
     var category: PlaceCategory {
         PlaceCategory(setting: attributes?.physical?.setting)
     }

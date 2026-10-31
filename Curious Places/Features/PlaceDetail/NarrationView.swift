@@ -6,35 +6,90 @@
 import SwiftUI
 
 /// Finds a place's narration and plays it, starting automatically as the Expo app did.
-/// Shows nothing when the place has no audio.
+/// When the narration for the description's language is missing, asks the Edge Function
+/// to generate it (playing the English "loading" clip meanwhile) and falls back to any
+/// other narration if that fails. Shows nothing when the place has no audio at all.
 struct NarrationView: View {
     let place: Place
+    let player: NarrationPlayer
+
+    private enum Phase: Equatable {
+        case searching
+        case preparing
+        case ready(NarrationTrack)
+        case unavailable
+    }
 
     @Environment(NarrationService.self) private var service
-    @State private var player = NarrationPlayer()
-    @State private var track: NarrationTrack?
-    @State private var isSearching = true
+    @State private var phase = Phase.searching
     @State private var scrubPosition: Double?
 
     var body: some View {
         Group {
-            if isSearching {
-                Label("Finding narration…", systemImage: "waveform")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSecondary)
-            } else if let track {
+            switch phase {
+            case .searching:
+                status("Finding narration…")
+            case .preparing:
+                status("Preparing narration…")
+            case .ready(let track):
                 controls(for: track)
+            case .unavailable:
+                EmptyView()
             }
         }
-        .task(id: place.id) {
-            isSearching = true
-            track = await service.track(for: place.id, language: place.language)
-            isSearching = false
-            if let track {
-                await player.load(track.url, autoplay: true)
+        .task(id: place.id) { await start() }
+    }
+
+    private func start() async {
+        phase = .searching
+        let found = await service.track(for: place.id, language: place.language)
+        if Task.isCancelled { return }
+
+        let wanted = place.overviewLanguage
+        if found?.language != wanted, !place.overviewText.isEmpty {
+            phase = .preparing
+            if let generated = await generate(wanted) {
+                await play(generated)
+                return
             }
+            if Task.isCancelled { return }
         }
-        .onDisappear { player.stop() }
+
+        if let found {
+            await play(found)
+        } else {
+            player.stop()
+            phase = .unavailable
+        }
+    }
+
+    /// One request to the Edge Function, then polling for the file. Nil if the function
+    /// isn't deployed, fails, or the file doesn't appear in time.
+    private func generate(_ language: AppLanguage) async -> NarrationTrack? {
+        guard let result = try? await service.requestGeneration(for: place.id, language: language) else { return nil }
+        switch result {
+        case .ready(let track):
+            return track
+        case .generating(let track, let loadingClip):
+            if let loadingClip {
+                await player.load(loadingClip, autoplay: true)
+            }
+            return await service.waitUntilAvailable(track, curioID: place.id) ? track : nil
+        }
+    }
+
+    private func play(_ track: NarrationTrack) async {
+        phase = .ready(track)
+        await player.load(track.url, autoplay: true)
+    }
+
+    private func status(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text)
+        }
+        .font(.subheadline)
+        .foregroundStyle(Theme.textSecondary)
     }
 
     private func controls(for track: NarrationTrack) -> some View {

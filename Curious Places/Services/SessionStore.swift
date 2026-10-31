@@ -48,6 +48,8 @@ final class SessionStore {
 
     var email: String? { user?.email }
 
+    var userID: UUID? { user?.id }
+
     var displayName: String {
         profile?.fullName ?? metadataName ?? user?.email ?? "Explorer"
     }

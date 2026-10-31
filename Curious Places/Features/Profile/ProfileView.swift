@@ -5,13 +5,16 @@
 
 import SwiftUI
 
-/// Account, language and appearance. Badges and visited places arrive with check-ins.
+/// Account, progress (visits and badges), language and appearance.
 struct ProfileView: View {
     @Environment(SessionStore.self) private var session
+    @Environment(CheckinStore.self) private var checkins
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.deviceDefault()
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
     @State private var showsSignIn = false
     @State private var confirmsDelete = false
+    @State private var selectedBadge: Badge?
+    @State private var errorTitle = ""
     @State private var errorMessage: String?
 
     var body: some View {
@@ -19,6 +22,7 @@ struct ProfileView: View {
             Form {
                 if session.status == .signedIn {
                     ProfileHeader()
+                    progressSections
                 } else {
                     Section {
                         Text("You're exploring as a guest. Sign in to save places, check in and earn badges.")
@@ -58,6 +62,10 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
+            .refreshable { await checkins.reload() }
+            .sheet(item: $selectedBadge) { badge in
+                BadgeDetailView(badge: badge, earned: checkins.earnedBadge(badge))
+            }
             .onChange(of: language) {
                 Task { await session.updateLanguage(language) }
             }
@@ -72,10 +80,64 @@ struct ProfileView: View {
             } message: {
                 Text("This permanently deletes your account, saved lists and check-ins. It can't be undone.")
             }
-            .alert("Couldn't delete your account", isPresented: .constant(errorMessage != nil)) {
+            .alert(errorTitle, isPresented: .constant(errorMessage != nil)) {
                 Button("OK") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var progressSections: some View {
+        Section {
+            NavigationLink {
+                VisitedPlacesView()
+            } label: {
+                LabeledContent("Places Visited", value: checkins.isLoading && checkins.checkins.isEmpty
+                               ? "–" : "\(checkins.checkins.count)")
+            }
+            LabeledContent("Badges Earned", value: "\(checkins.earned.count) of \(checkins.badges.count)")
+            if checkins.loadFailed {
+                HStack {
+                    Label("Couldn't load your progress.", systemImage: "wifi.exclamationmark")
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Button("Retry") { Task { await checkins.reload() } }
+                }
+            }
+        }
+
+        if !checkins.badges.isEmpty {
+            Section("Trophy Case") {
+                TrophyCase(badges: checkins.badges, isEarned: { checkins.earnedBadge($0) != nil }) { badge in
+                    selectedBadge = badge
+                }
+            }
+        }
+
+        Section("Recent Visits") {
+            if checkins.checkins.isEmpty {
+                Text(checkins.isLoading ? "Loading…" : "No visits yet. Hunt for a place on the map and check in when you get there.")
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            ForEach(checkins.checkins.prefix(5)) { checkin in
+                CheckinRow(checkin: checkin)
+                    .swipeActions {
+                        Button("Remove", systemImage: "trash", role: .destructive) { remove(checkin) }
+                    }
+            }
+        }
+    }
+
+    private func remove(_ checkin: Checkin) {
+        guard let userID = session.userID else { return }
+        Task {
+            do {
+                try await checkins.remove(placeID: checkin.placeID, userID: userID)
+            } catch {
+                errorTitle = "Couldn't remove the check-in"
+                errorMessage = error.localizedDescription
             }
         }
     }
@@ -85,6 +147,7 @@ struct ProfileView: View {
             do {
                 try await session.deleteAccount()
             } catch {
+                errorTitle = "Couldn't delete your account"
                 errorMessage = error.localizedDescription
             }
         }

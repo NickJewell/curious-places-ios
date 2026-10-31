@@ -91,6 +91,12 @@ create policy "Users can delete their own checkins" on public.checkins
 -- -----------------------------------------------------------------------------
 alter table public.content_votes enable row level security;
 
+-- The live database has open policies (pulled schema); permissive policies are
+-- OR-ed together, so they must go or the ones below restrict nothing.
+drop policy if exists "Anyone can read votes" on public.content_votes;
+drop policy if exists "Anyone can insert votes" on public.content_votes;
+drop policy if exists "Anyone can delete votes" on public.content_votes;
+
 drop policy if exists "Users can read their own votes" on public.content_votes;
 create policy "Users can read their own votes" on public.content_votes
   for select to authenticated

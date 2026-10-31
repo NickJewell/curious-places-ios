@@ -81,6 +81,12 @@ final class NarrationPlayer {
         currentTime = 0
         duration = 0
         state = .idle
+    }
+
+    /// Stops and hands the audio session back to other apps. Call only when no other
+    /// player on screen needs the session (the place page has two: narration and facts).
+    func release() {
+        stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 

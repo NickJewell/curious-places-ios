@@ -10,7 +10,9 @@ import SwiftUI
 struct PlacePanel: View {
     let place: Place
     let distance: CLLocationDistance?
+    let isVisited: Bool
     let onRead: () -> Void
+    let onHunt: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -21,6 +23,9 @@ struct PlacePanel: View {
                     Label(distance.formattedDistance, systemImage: "location.fill")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
+                }
+                if isVisited {
+                    VisitedBadge()
                 }
                 Spacer(minLength: 0)
                 Button(action: onClose) {
@@ -55,6 +60,8 @@ struct PlacePanel: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+
+            HuntButton(action: onHunt)
         }
         .padding(16)
         .background(.regularMaterial, in: .rect(cornerRadius: 24))
@@ -74,6 +81,33 @@ struct CategoryBadge: View {
             .padding(.vertical, 4)
             .background(category.color.opacity(0.15), in: .capsule)
             .overlay(Capsule().stroke(category.color.opacity(0.4)))
+    }
+}
+
+/// Starts a compass hunt for a place (the Expo map's "Hunt" and detail page's "Navigate Here").
+struct HuntButton: View {
+    var title = "Hunt"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: "location.north.line.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .tint(Theme.gold)
+        .foregroundStyle(Theme.backgroundRoot)
+    }
+}
+
+struct VisitedBadge: View {
+    var body: some View {
+        Label("Visited", systemImage: "checkmark.seal.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.gold)
     }
 }
 

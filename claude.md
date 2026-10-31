@@ -10,8 +10,20 @@ Full analysis of the Expo app is in `docs/migration/01-inventory.md`. Read §1 "
 - **Milestones:**
   1. Foundation and Explore map ✅
   2. Auth: Apple, Google, email and guest, plus the profile and language sync to `profiles.preferred_language` ✅ (code done; needs the dashboard setup below)
-  3. Full place detail: facts, audio, votes and issue reports. **Narration playback is done:** `Services/NarrationService.swift` and `NarrationPlayer.swift`, plus `Features/PlaceDetail/NarrationView.swift`. It autoplays and streams from **public** audio buckets (`supabase/proposed/04`), trying the user's language, then English, then the legacy `audio_overviews_*` buckets. Not yet built: generating missing audio (needs a TTS Edge Function), fact audio, facts, votes and reports.
-  4. Compass hunt, check-ins and badges
+  3. Full place detail: facts, audio, votes and issue reports ✅. Code is in `Features/PlaceDetail/`, `Services/NarrationService.swift`, `FactService.swift` and `FeedbackService.swift`, and `supabase/functions/narration/`.
+     - **Narration** autoplays and streams from **public** audio buckets (`supabase/proposed/04`), trying the user's language, then English, then the legacy `audio_overviews_*` buckets. If the description's language has no audio, the app calls the `narration` Edge Function **once**. For English it plays the loading clip meanwhile. It then polls the public URL for up to 90 s, and falls back to any other narration if nothing arrives.
+     - **Facts** are read straight from `facts`. "Did you know?" deals random facts without repeats. Facts show in the description language, falling back to English. That fallback is a deliberate extension: Expo showed facts to English users only.
+     - **Fact audio** is English only (voice Clive). A fact's position counts all of the place's facts by `created_at`, whatever their language. Many places have bulk-imported facts that share one `created_at`, so their order is arbitrary. For those facts, the app and the function use an id-keyed file (`en_curio_N_fact_<uuid>.mp3`) instead of the server's `en_curio_N_fact_NN_v2.mp3`, so they can't play the wrong fact's audio.
+     - **Votes** are for signed-in users only; guests get the sign-in sheet. Thumbs up toggles. Thumbs down opens "Report an Issue", and sending a place report records the down vote. The user's vote is loaded when the page opens, which Expo never did. Setting a vote deletes the user's own rows and then inserts; deletes are always scoped to `user_id`.
+     - **Reports** go to `issues` (not `content_reports`). `user_id` is the *profile* id (that's the foreign key), or null for guests.
+  4. Compass hunt, check-ins and badges ✅ (code done; needs `proposed/06` applied). Code is in `Features/Hunt/`, `Services/CheckinService.swift` and `CheckinStore.swift`, and `Features/Profile/`.
+     - **Hunt** starts from "Hunt" on the map panel or "Navigate Here" on place detail. The compass is a full-screen cover with a map page and a compass page. The chevron puts it away without ending the hunt, and the map then offers "Resume Compass". `HuntStore` holds the target app-wide.
+     - **Sensors.** Headings only come through a `CLLocationManager` delegate (there's no async API), and `trueHeading` needs that manager's location updates too. So `HuntModel` runs its own manager at navigation accuracy for the life of the hunt. The Expo numbers are kept verbatim in `HuntMath`: arrival under 10 m, check-in under 40 m, both only on fixes accurate to 20 m; a 0.2 circular-mean low-pass, blended 0.6 with the GPS course above 1 m/s; a calibration hint above 30°. Arrival sticks once reached. With no magnetometer (e.g. the simulator) the needle is hidden and the map page still works.
+     - **Check-ins** are for signed-in users; guests in range get "Sign In to Check In". `checkins.user_id` is the *auth* user id (unlike `issues`). A `23505` duplicate counts as already checked in.
+     - **Removing a check-in** fails loudly. The delete asks for the deleted rows back, and an empty result is an error, because without the DELETE policy in `06` the request "succeeds" and deletes nothing (Expo's silent bug).
+     - **Badges are awarded by the database**, by the trigger in `06`. The app never inserts into `user_badges`; it diffs the earned badges before and after a check-in to show what's new. Until `06` is applied, iOS check-ins earn no badges.
+     - **The celebration sheet shows only real outcomes**: the discovery, the visit count (with the Expo milestone copy for 1, 5, 10, 25 and every tenth), and newly earned badges. That's a deliberate change: Expo also awarded "points" that were never stored. The Expo "badge unlocked" modal and confetti never fired, so they weren't ported.
+     - **Profile** reads `checkins`, `user_badges` and `badges` directly, not the `get_user_progress` RPC. It shows the visit and badge counts, the trophy case, the five latest visits and a full "Places Visited" list, with swipe to remove.
   5. Lists and tours
   6. Admin (undecided)
 
@@ -36,6 +48,16 @@ This has to be done before release: App Store guideline 4.8 requires Sign in wit
 3. Apply `supabase/proposed/03_account_and_admin.sql`. Without it, Delete Account shows an error.
 
 Email confirmation links only work when tapped on the same device that signed up, because the PKCE verifier is stored there.
+
+**Milestone 3 setup** (done 2026-10-31: `05` applied, secret set, function deployed and tested on a fact):
+1. Apply `supabase/proposed/05_votes_and_issues.sql`, which is the same as §6 and §7 of `01`. `issues` has RLS on but no INSERT policy, so reports fail with "Couldn't send your report" until this is applied. The file also replaces the live vote policies, which let anyone read or delete anyone's votes.
+2. Deploy the TTS function: `supabase secrets set INWORLD_API_KEY=…`, then `supabase functions deploy narration`. Until then the app plays only audio that already exists. The function creates missing buckets as public; any language bucket the Replit server created as private still needs `proposed/04`.
+
+Known limits of the `narration` function:
+- **Anyone with the anon key can call it, and each call spends InWorld credit.** Caching limits this to one call per file, but someone could still request every curio in all 11 languages. The Replit server had the same exposure.
+- **InWorld's text-length limit isn't handled,** as on the server. If long overviews never generate, check there first.
+
+**Milestone 4 setup:** apply `supabase/proposed/06_checkins_and_badges.sql`, which is the same as §5, §9 and §10 of `01` plus a one-off badge backfill. It adds the `checkins` DELETE policy (until then "Remove Check-in" shows an error), replaces client badge inserts with an award trigger (until then iOS check-ins earn no badges), and restricts `get_user_progress` to the caller's own progress.
 
 **Release blocker:** deleting an account that signed in with Apple must also revoke its Apple tokens. That needs an Edge Function, which isn't built yet.
 
