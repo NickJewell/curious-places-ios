@@ -22,8 +22,13 @@ struct ExploreView: View {
     @State private var pendingHunt: Place?
     @State private var savingPlace: Place?
     @State private var showsSignIn = false
+    @State private var showsNearby = false
+    /// Set when a place is tapped in "Nearby"; the map shows it once the sheet closes.
+    @State private var pendingNearby: Place?
+    private let service: PlaceService
 
     init(service: PlaceService) {
+        self.service = service
         _model = State(initialValue: ExploreModel(service: service))
     }
 
@@ -60,7 +65,9 @@ struct ExploreView: View {
         }
         .onChange(of: location.location != nil, initial: true) { centreOnUser() }
         .safeAreaInset(edge: .top) {
-            ExploreHeader(model: model, language: language, showsFilters: !hunt.isHunting)
+            ExploreHeader(model: model, language: language, showsFilters: !hunt.isHunting) {
+                showsNearby = true
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if hunt.isHunting {
@@ -92,6 +99,14 @@ struct ExploreView: View {
                 pendingHunt = place
                 detailPlace = nil
             }
+        }
+        .sheet(isPresented: $showsNearby, onDismiss: {
+            if let place = pendingNearby {
+                pendingNearby = nil
+                show(place)
+            }
+        }) {
+            NearbyPlacesView(service: service) { pendingNearby = $0 }
         }
         .sheet(item: $savingPlace) { place in
             SaveToListSheet(place: place)
@@ -147,6 +162,17 @@ struct ExploreView: View {
         }
     }
 
+    /// Centres on a place and opens its panel, as tapping its marker would.
+    private func show(_ place: Place) {
+        guard !hunt.isHunting else { return }
+        model.select(place)
+        withAnimation {
+            position = .region(MKCoordinateRegion(
+                center: place.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006)
+            ))
+        }
+    }
+
     /// Shows the user and the target together, then opens the compass (MapScreen.tsx:352-368).
     private func startHunt(_ place: Place) {
         model.select(id: nil)
@@ -184,6 +210,7 @@ private struct ExploreHeader: View {
     let model: ExploreModel
     let language: AppLanguage
     let showsFilters: Bool
+    let onNearby: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -199,6 +226,10 @@ private struct ExploreHeader: View {
                 if model.isLoading {
                     ProgressView()
                         .controlSize(.small)
+                }
+                // Hidden during a hunt, like the filters: the place panel stays closed then.
+                if showsFilters {
+                    NearbyButton(action: onNearby)
                 }
             }
 
@@ -235,6 +266,24 @@ private struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Opens "Nearby": the places around the user, by distance.
+private struct NearbyButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "location.magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.gold)
+                .frame(width: 36, height: 32)
+                .background(.regularMaterial, in: .capsule)
+                .overlay(Capsule().stroke(Theme.gold.opacity(0.4)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Nearby")
     }
 }
 
