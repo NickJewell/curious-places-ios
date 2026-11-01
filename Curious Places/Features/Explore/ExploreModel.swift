@@ -60,13 +60,25 @@ final class ExploreModel {
 
     /// Markers to show: everything fetched, filtered, unless there are too many in view.
     /// The selected place always stays, so its marker doesn't vanish under its own panel.
+    /// That includes a place picked from "Nearby" that the filter or the loaded area leaves out.
     var visiblePlaces: [Place] {
         if tooManyPlaces { return selectedPlace.map { [$0] } ?? [] }
-        return fetched.filter(filter.includes)
+        let places = fetched.filter(filter.includes)
+        if let selectedPlace, !places.contains(where: { $0.id == selectedPlace.id }) {
+            return places + [selectedPlace]
+        }
+        return places
     }
 
     func select(id: String?) {
-        selectedPlace = id.flatMap { id in fetched.first { $0.id == id } }
+        selectedPlace = id.flatMap { id in
+            fetched.first { $0.id == id } ?? (selectedPlace?.id == id ? selectedPlace : nil)
+        }
+    }
+
+    /// Selects a place that may not be loaded yet, as when it's picked from "Nearby".
+    func select(_ place: Place) {
+        selectedPlace = fetched.first { $0.id == place.id } ?? place
     }
 
     func regionDidChange(_ region: MKCoordinateRegion, language: AppLanguage) {

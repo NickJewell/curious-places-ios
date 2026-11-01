@@ -91,6 +91,28 @@ struct PlaceService {
         return rows.compactMap { $0.place(in: language) }
     }
 
+    /// Visible places in the r9 H3 cell at this point and the six cells around it, nearest
+    /// first (`places_near` in supabase/proposed/08). Empty more than two rings from any place.
+    func placesNear(latitude: Double, longitude: Double, language: AppLanguage) async throws -> [Place] {
+        let rows: [PlaceRow] = try await client
+            .rpc("places_near", params: NearParams(lat: latitude, lon: longitude, k: 1, res: 9))
+            .select(Self.columns(for: language))
+            .limit(Self.nearbyLimit)
+            .execute()
+            .value
+        return rows.compactMap { $0.place(in: language) }
+    }
+
+    /// Most rows for "Nearby". The busiest spots in the City have about 100.
+    static let nearbyLimit = 150
+
+    private nonisolated struct NearParams: Encodable, Sendable {
+        let lat: Double
+        let lon: Double
+        let k: Int
+        let res: Int
+    }
+
     /// Which of these ids are visible places.
     func visibleIDs(_ ids: [String]) async throws -> Set<String> {
         guard !ids.isEmpty else { return [] }
